@@ -1,0 +1,7 @@
+{
+  
+  
+  "SHOTS": 300,
+  "DESCRIPTION": "Test circuit",
+  "QUBIT_PAIRS": [[15,20]]
+}
