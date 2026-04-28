@@ -16,5 +16,32 @@ This package was extracted from a larger private research workflow and reorganiz
 
 For now, install directly from GitHub:
 
-```bash
-pip install git+https://github.com/YOUR_USERNAME_OR_ORG/ionq-experiment-toolkit.git
+    pip install git+https://github.com/YOUR_USERNAME_OR_ORG/ionq-experiment-toolkit.git
+
+For local development:
+
+    git clone https://github.com/YOUR_USERNAME_OR_ORG/ionq-experiment-toolkit.git
+    cd ionq-experiment-toolkit
+    pip install -e .
+
+## Usage
+
+Example usage will be added as the public API is stabilized.
+
+A typical import is:
+
+    import ionq_experiment_toolkit
+
+## Notes
+
+This is not an official IonQ package. It is an independent research software toolkit developed by academic users for experiment submission, result retrieval, and data-quality workflows.
+
+Users are responsible for managing their own IonQ credentials, backend access, and API usage.
+
+## Authors
+
+See AUTHORS.md.
+
+## License
+
+License information will be added before formal release.
