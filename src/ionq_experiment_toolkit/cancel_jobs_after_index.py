@@ -30,7 +30,7 @@ def cancel_jobs_after_index(start_index):
         return
 
     # Subset rows from start_index to end
-    df_subset = df.iloc[start_index:]
+    df_subset = df.iloc[start_index+1:]
 
     # Extract job IDs
     job_ids = df_subset["job_id"].dropna().astype(str).tolist()
