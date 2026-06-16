@@ -45,16 +45,16 @@ def ensure_status_header(path: Path):
     if not path.exists():
         with open(path, "w", newline="") as f:
             w = csv.writer(f)
-            w.writerow(["checked_utc","Experiment","Status", "job_id","Qubit_Pair","Theta_alpha","Mapping","shots","Plotted","Saved","Data_file_path","Circ_file_path"])
+            w.writerow(["checked_utc","Experiment","Status", "job_id","Qubit_Pair","Characteristic","Mapping","shots","Plotted","Saved","Data_file_path","Circ_file_path"])
 # Now define the _save_result function
-def _save_result(job, jid, circuit, backend, timestamp, characteristic, theta_alpha=None, Data_characteristic=None):
+def _save_result(job, jid, circuit, backend, timestamp, characteristic, Characteristic=None, Data_characteristic=None):
     """Save job.result() to experiment-specific folder and update job_status.csv."""
     
     # Determine which experiment folder to use
     if circuit in experiment_paths:
         save_dir = experiment_paths[circuit]
-        if circuit == "Data" and theta_alpha is not None:
-            save_dir = save_dir.parent / "Raw_Data"/f"Data_{theta_alpha}"
+        if circuit == "Data" and Characteristic is not None:
+            save_dir = save_dir.parent / "Raw_Data"/f"Data_{Characteristic}"
             save_dir.mkdir(parents=True, exist_ok=True)
     else:
         save_dir = RESULTS_DIR
@@ -91,7 +91,7 @@ def _save_result(job, jid, circuit, backend, timestamp, characteristic, theta_al
             status_name=job_row['Status'],
             q_pair=job_row['Qubit_Pair'],
             
-            theta_alpha=job_row['Theta_alpha'],
+            Characteristic=job_row['Characteristic'],
             saved=True,
             Data_file_path=str(out),
             Circ_file_path=job_row['Circ_file_path']
@@ -117,7 +117,7 @@ def sync_job_status_with_submitted():
         df_status = pd.read_csv(STATUS_OUT)
     else:
         df_status = pd.DataFrame(columns=["checked_utc", "Experiment", "Status", "job_id", 
-                                         "Qubit_Pair", "Theta_alpha", "Mapping","shots",
+                                         "Qubit_Pair", "Characteristic", "Mapping","shots",
                                          "Plotted", "Saved",  "Data_file_path","Circ_file_path"])
     
     # Find jobs in submitted but not in status
@@ -135,7 +135,7 @@ def sync_job_status_with_submitted():
                 "job_id": jid,
                 "Qubit_Pair": row['Qubit_Pair'],
                 
-                "Theta_alpha": row['Theta_alpha'],
+                "Characteristic": row['Characteristic'],
                 "Mapping":qubit_mapping,
                 "shots": row['shots'],
                 "Plotted": False,
@@ -182,7 +182,7 @@ def get_jobs_to_poll(df_status):
     
     return jobs_to_poll
 
-def update_or_add_job_status(jid, circtype, status_name, q_pair, theta_alpha, shots=None,saved=False,Data_file_path="",Circ_file_path =""):
+def update_or_add_job_status(jid, circtype, status_name, q_pair, Characteristic, shots=None,saved=False,Data_file_path="",Circ_file_path =""):
     """Update existing job entry or add new one using pandas. NO DUPLICATES."""
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     
@@ -210,7 +210,7 @@ def update_or_add_job_status(jid, circtype, status_name, q_pair, theta_alpha, sh
                 "job_id": jid,
                 "Qubit_Pair": q_pair,
                 
-                "Theta_alpha": theta_alpha,
+                "Characteristic": Characteristic,
                 "Mapping":qubit_mapping,
                 "shots": shots,
                 "Plotted": False,
@@ -229,7 +229,7 @@ def update_or_add_job_status(jid, circtype, status_name, q_pair, theta_alpha, sh
             "Qubit_Pair": q_pair,
             "Mapping":qubit_mapping,
             "shots": shots,
-            "Theta_alpha": theta_alpha,
+            "Characteristic": Characteristic,
             "Plotted": False,
             "Saved": saved,
             "Data_file_path": Data_file_path,
@@ -406,7 +406,7 @@ def main(poll_every_sec: int = 10):
                 q_pair = job_row['Qubit_Pair']
                 
                 
-                theta_alpha = job_row['Theta_alpha']
+                Characteristic = job_row['Characteristic']
                 shots = job_row['shots']
                 
                 timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -414,7 +414,7 @@ def main(poll_every_sec: int = 10):
                 print(f"{circtype}  |  {jid}  |  {status.name}")
                 
                 # Update status (this updates the existing row, no duplicates)
-                update_or_add_job_status(jid, circtype, status.name, q_pair,  theta_alpha, shots,False, "")
+                update_or_add_job_status(jid, circtype, status.name, q_pair,  Characteristic, shots,False, "")
                 
                 
                 # If finished, save result
@@ -430,8 +430,8 @@ def main(poll_every_sec: int = 10):
                         _save_result(job, jid, circtype, backend, submission_timestamp, characteristic)
                         
                     elif circtype == "Data":
-                        characteristic = f"theta_alpha_{theta_alpha}"
-                        _save_result(job, jid, circtype, backend, timestamp, characteristic,theta_alpha)
+                        characteristic = f"Characteristic_{Characteristic}"
+                        _save_result(job, jid, circtype, backend, timestamp, characteristic,Characteristic)
                 
                 # Mark as finished if in final state
                 if status in (JobStatus.DONE, JobStatus.CANCELLED, JobStatus.ERROR):
@@ -445,14 +445,14 @@ def main(poll_every_sec: int = 10):
                 q_pair = job_row['Qubit_Pair']
                 
                 
-                theta_alpha = job_row['Theta_alpha']
+                Characteristic = job_row['Characteristic']
                 shots = job_row['shots']
                 update_or_add_job_status(
                 jid,
                 circtype,
                 JobStatus.ERROR.name,   # mark failure
                 q_pair,
-                theta_alpha,
+                Characteristic,
                 shots,
                 True,                    # Saved = True so we stop polling
                 str(e)                   # Error message

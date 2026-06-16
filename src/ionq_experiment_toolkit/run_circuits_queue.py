@@ -66,13 +66,13 @@ if not backend_name or not str(backend_name).strip():
 
 def load_config_experiment_from_queue(row):
     """
-    Extracts experiment_type, shots, qubit_config, and theta_alpha from a CSV queue row.
+    Extracts experiment_type, shots, qubit_config, and Characteristic from a CSV queue row.
 
     Expected fields:
         Experiment_Type:   "2QEcho", "2QCumulative", or "Data"
         shots:             int
         qpair:             JSON list (e.g. [[5,6],[7,8]]) for 2Q experiments
-        theta_alpha:       "0.5_1.2" for Data
+        Characteristic:       "0.5_1.2" for Data
     """
 
     # ----- EXPERIMENT TYPE -----
@@ -125,15 +125,15 @@ def load_config_experiment_from_queue(row):
             if not all(isinstance(x, int) and x >= 0 for x in pair):
                 raise ValueError(f"Qubit indices must be non-negative ints: {pair}")
 
-        theta_alpha = "-"   # placeholder for 2Q exps
+        Characteristic = "-"   # placeholder for 2Q exps
 
     # ==============================================
     #  DATA EXPERIMENT
     # ==============================================
     elif experiment == "Data":
-        theta_alpha = (row.get("theta_alpha") or "").strip()
-        if theta_alpha == "":
-            raise KeyError("Error: 'theta_alpha' required for Data experiment.")
+        Characteristic = (row.get("Characteristic") or "").strip()
+        if Characteristic == "":
+            raise KeyError("Error: 'Characteristic' required for Data experiment.")
 
         qubit_config = "-"  # Data uses global qubit_mapping only
 
@@ -143,14 +143,14 @@ def load_config_experiment_from_queue(row):
     else:
         raise ValueError(f"Unknown Experiment_Type '{experiment}' in CSV row.")
 
-    return experiment, shots, qubit_config, theta_alpha,debiasing_value
+    return experiment, shots, qubit_config, Characteristic,debiasing_value
 
 def ensure_jobs_header(path: Path):
     if not path.exists():
         with open(path, "w", newline="") as f:
             w = csv.writer(f)
-            w.writerow(["submitted_utc","backend","noise_model", "experiment","circ_name","job_id","qubit_mapping","Qubit_Pair", "shots","Theta_alpha", "circuit_file"])
-def write_results(experiment,backend_name,noise_model,job_id,shots,qubit_pair,circ_name,qpy_path,theta_alpha):
+            w.writerow(["submitted_utc","backend","noise_model", "experiment","circ_name","job_id","qubit_mapping","Qubit_Pair", "shots","Characteristic", "circuit_file"])
+def write_results(experiment,backend_name,noise_model,job_id,shots,qubit_pair,circ_name,qpy_path,Characteristic):
     with open(JOBS_SUBMITTED_LOG, "a", newline="") as f_out:
         
         w = csv.writer(f_out)
@@ -168,13 +168,13 @@ def write_results(experiment,backend_name,noise_model,job_id,shots,qubit_pair,ci
             qubit_mapping,
             qubit_pair,
             shots,
-            theta_alpha,
+            Characteristic,
             qpy_path
         ])
         
         # optional tiny pause to be polite
         time.sleep(0.2)
-def load_and_run_qpy_circuits(experiment,folder_path, backend_name,noise_model,token, shots,qubit_pairs,theta_alpha,debiasing = False):
+def load_and_run_qpy_circuits(experiment,folder_path, backend_name,noise_model,token, shots,qubit_pairs,Characteristic,debiasing = False):
     """
     Load all .qpy circuit files from a folder and run them.
     
@@ -236,7 +236,7 @@ def load_and_run_qpy_circuits(experiment,folder_path, backend_name,noise_model,t
                         job = backend_used.run(remapped_circuits, shots=shots,error_mitigation=ErrorMitigation.NO_DEBIASING)
                         noise_model = None
                     job_id = job.job_id()
-                    write_results(experiment,backend_name,noise_model,job_id,shots,pair,qpy_files[0].name,qpy_files[0],theta_alpha)
+                    write_results(experiment,backend_name,noise_model,job_id,shots,pair,qpy_files[0].name,qpy_files[0],Characteristic)
 
                     print(f"Submitted: {qpy_files[0].name} : job_id={job_id}")
 
@@ -278,7 +278,7 @@ def load_and_run_qpy_circuits(experiment,folder_path, backend_name,noise_model,t
                         noise_model = None
                     job_id = job.job_id()
                     pair = "-"
-                    write_results(experiment,backend_name,noise_model,job_id,shots,pair,qpy_file.name,qpy_file,theta_alpha)
+                    write_results(experiment,backend_name,noise_model,job_id,shots,pair,qpy_file.name,qpy_file,Characteristic)
 
                     print(f"Submitted: {qpy_file.name} : job_id={job_id}")
 
@@ -337,7 +337,7 @@ def main():
 
     idx,row = load_next_from_queue(QUE)
 
-    experiment, shots, qubit_pairs,theta_alpha,debiasing_value = load_config_experiment_from_queue(row)
+    experiment, shots, qubit_pairs,Characteristic,debiasing_value = load_config_experiment_from_queue(row)
     
     debiasing_value = False
     
@@ -345,7 +345,7 @@ def main():
     print(f"Selected experiment: {experiment}")
 
     if experiment == "Data":
-        print(f" → theta_alpha = {theta_alpha}")
+        print(f" → Characteristic = {Characteristic}")
         
     else:
         print(" → no extra parameters required")
@@ -366,8 +366,8 @@ def main():
         print(type(shots))  
         print(qubit_pairs[0])  
          
-        print(theta_alpha)
-        load_and_run_qpy_circuits(experiment,CIRCS_2Qecho,backend_name,noise_model,token,shots,qubit_pairs,theta_alpha)
+        print(Characteristic)
+        load_and_run_qpy_circuits(experiment,CIRCS_2Qecho,backend_name,noise_model,token,shots,qubit_pairs,Characteristic)
         mark_queue_row_submitted(QUE, idx)
     elif experiment == '2QCumulative':
         
@@ -375,15 +375,15 @@ def main():
         print(backend_name)
         print(shots) 
         print(qubit_pairs) 
-        print(theta_alpha) 
+        print(Characteristic) 
         
-        load_and_run_qpy_circuits(experiment,CIRCS_2QCumulative,backend_name,noise_model,token,shots,qubit_pairs,theta_alpha)
+        load_and_run_qpy_circuits(experiment,CIRCS_2QCumulative,backend_name,noise_model,token,shots,qubit_pairs,Characteristic)
         mark_queue_row_submitted(QUE, idx)
         pass
         
     elif experiment == 'Data':
-        folder_path = CIRCS_Data_batch / f"Data_{theta_alpha}"
-        load_and_run_qpy_circuits(experiment,folder_path,backend_name,noise_model,token,shots,qubit_pairs,theta_alpha,debiasing_value)
+        folder_path = CIRCS_Data_batch / f"Data_{Characteristic}"
+        load_and_run_qpy_circuits(experiment,folder_path,backend_name,noise_model,token,shots,qubit_pairs,Characteristic,debiasing_value)
         mark_queue_row_submitted(QUE, idx)
         # Do something for command 'c'
         pass
