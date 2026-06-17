@@ -1,4 +1,4 @@
 {"QUBIT_MAPPING": [16, 8, 9, 13],
-"BACKEND_NAME": "simulator",
-"NOISE_MODEL": "forte-1"
+"BACKEND_NAME": "qpu.forte-1",
+"NOISE_MODEL": "None"
 }
