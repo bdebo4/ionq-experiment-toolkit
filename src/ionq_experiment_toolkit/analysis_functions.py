@@ -1,12 +1,13 @@
-# import pandas as pd
+import pandas as pd
 
 # import packages
 import cirq
 import numpy as np
 import matplotlib.pyplot as plt
 from typing import Sequence, Optional
+from typing import List, Dict
 import matplotlib.pyplot as plt
-
+from numpy.linalg import norm
 # import qiskit
 from qiskit import QuantumCircuit, transpile
 from qiskit_ionq import GPIGate, GPI2Gate, ZZGate
@@ -18,28 +19,34 @@ from qiskit.converters import circuit_to_dag, dag_to_circuit
 import qutip as qt
 from collections import Counter
 from itertools import product
+from collections import defaultdict
+from pathlib import Path, PureWindowsPath
+import json
 
-# convert cirq_cirquit to qiskit circuit using this function
 
-
-def generate_dtheta_SQ(noise_array: np.ndarray, noise_bool: Sequence[bool]) -> float:
-    # noise_array = np.array([error_syst_SQ, error_rand_SQ, error_syst_XX, error_rand_XX])
-    # noise_bool  = [coherent_error, incoherent_error] booleans
-    return np.random.normal(
-        loc   = noise_array[0] * noise_bool[0],
-        scale = noise_array[1] * noise_bool[1]
-    )
-
-def generate_dtheta_XX(noise_array: np.ndarray, noise_bool: Sequence[bool]) -> float:
-    # noise_array = np.array([error_syst_SQ, error_rand_SQ, error_syst_XX, error_rand_XX])
-    # noise_bool  = [coherent_error, incoherent_error] booleans
-    return np.random.normal(
-        loc   = noise_array[2] * noise_bool[0],
-        scale = noise_array[3] * noise_bool[1]
-    )
 
 def cirq_to_qiskit(cirq_circuit):
-    """Convert Cirq circuit to Qiskit circuit"""
+    """
+    Convert a Cirq circuit into an equivalent Qiskit quantum circuit.
+
+    Parameters
+    ----------
+    cirq_circuit
+        Cirq circuit to convert. The circuit may contain common single-qubit gates,
+        common two-qubit gates, rotation gates, and global phase gates.
+
+    Returns
+    -------
+    QuantumCircuit
+        Qiskit circuit with the same number of qubits and the supported operations
+        translated into Qiskit gate calls.
+
+    Notes
+    -----
+    Supported gates include ``H``, ``X``, ``Y``, ``Z``, ``S``, ``CNOT``, ``CZ``,
+    ``rx``, ``ry``, ``rz``, ``XXPowGate``, ``YYPowGate``, ``ZZPowGate``, and
+    ``GlobalPhaseGate``. Unsupported gates are skipped and reported with a warning.
+    """
     cirq_qubits = sorted(cirq_circuit.all_qubits())
     n_qubits = len(cirq_qubits)
     qiskit_circuit = QuantumCircuit(n_qubits)
@@ -95,74 +102,7 @@ def cirq_to_qiskit(cirq_circuit):
                 print(f"Warning: Unsupported gate type {type(gate).__name__}: {gate}")
     return qiskit_circuit
 
-def add_noise_to_circuit(noiseless_circuit, noise_array: np.ndarray, noise_bool: Sequence[bool]):
-    """
-    Adds random noise to RX, RY, RY, and RXX gates in the given circuit.
-    Each noise is a small random angle offset with different magnitudes.
 
-    If noise_array has length 4:
-        noise_array = [error_syst_SQ, error_rand_SQ, error_syst_XX, error_rand_XX]
-        -> same behavior as before: same SQ distribution for Rx/Ry/Rz (if enabled).
-
-    If noise_array has length 6:
-        noise_array = [error_syst_Rx, error_syst_Ry, error_syst_Rz,
-                       error_rand_SQ,
-                       error_syst_ZZ, error_rand_ZZ]
-        -> different coherent means for Rx, Ry, Rz; same SQ std for all;
-           XX/ZZ gates use error_syst_ZZ, error_rand_ZZ.
-    
-    Returns:
-        QuantumCircuit: A new noisy circuit
-    """
-    noise         = True
-    noisy_circuit = QuantumCircuit(noiseless_circuit.num_qubits)
-    n = noise_array.shape[0]
-
-    if n == 4:
-        # one SQ distribution for all single-qubit rotations,
-        sq_noise_rx = noise_array
-        sq_noise_ry = noise_array
-        sq_noise_rz = noise_array
-        xx_noise    = noise_array
-
-    elif n == 6:
-        # New mode: different coherent means for Rx, Ry, Rz.
-        error_syst_Rx, error_syst_Ry, error_syst_Rz, error_rand_SQ, error_syst_ZZ, error_rand_ZZ = noise_array
-        
-        sq_noise_rx = np.array([error_syst_Rx, error_rand_SQ, error_syst_ZZ, error_rand_ZZ], dtype=float)
-        sq_noise_ry = np.array([error_syst_Ry, error_rand_SQ, error_syst_ZZ, error_rand_ZZ], dtype=float)
-        sq_noise_rz = np.array([error_syst_Rz, error_rand_SQ, error_syst_ZZ, error_rand_ZZ], dtype=float)
-        xx_noise    = np.array([error_syst_Rx, error_rand_SQ, error_syst_ZZ, error_rand_ZZ], dtype=float)
-
-    else:
-        raise ValueError(
-            f"noise_array must have length 4 or 6, got {n}."
-        )
-
-    for instruction in noiseless_circuit.data:
-        instr = instruction.operation
-        qargs = instruction.qubits
-        cargs = instruction.clbits
-        params = instr.params.copy()
-        
-        if instr.name == "rx":
-            params[0] += generate_dtheta_SQ(sq_noise_rx, noise_bool)
-            noisy_circuit.rx(params[0], qargs[0])
-        elif instr.name == "ry":
-            params[0] += generate_dtheta_SQ(sq_noise_ry, noise_bool)
-            noisy_circuit.ry(params[0], qargs[0])
-        elif instr.name == "rz":
-            params[0] += generate_dtheta_SQ(sq_noise_rz, noise_bool)
-            noisy_circuit.rz(params[0], qargs[0])
-        elif instr.name == "rxx":
-            params[0] += generate_dtheta_XX(xx_noise, noise_bool)   
-            noisy_circuit.rxx(params[0], qargs[0], qargs[1])
-        elif instr.name == "rzz":
-            params[0] += generate_dtheta_XX(xx_noise, noise_bool)   
-            noisy_circuit.rzz(params[0], qargs[0], qargs[1])
-        else:
-            noisy_circuit.append(instr, qargs, cargs)  # keep other gates unchanged
-    return noisy_circuit
 
 # Functions to simulate circuits ----------------------------------------------------
 
@@ -193,6 +133,27 @@ def reverse_qubit_order(vec):
     return vec[reversed_indices]
 
 def plot_population_for_states(measured_vector, title):
+    """
+    Plot the population distribution over computational basis states.
+
+    Parameters
+    ----------
+    measured_vector : array-like
+        Vector containing the measured or simulated population for each basis
+        state. The length of the vector determines the number of states shown.
+    title : str
+        Title displayed above the plot.
+
+    Returns
+    -------
+    None
+        Displays a bar plot of the population distribution.
+
+    Notes
+    -----
+    This function is intended for an 8-qubit system, where the first and last
+    x-axis labels correspond to ``|00000000⟩`` and ``|11111111⟩``.
+    """
 # Plot the simulated measurement output from cirq circuits for all 2^8 possible states.
     width = 0.6
     br1 = np.arange(len(measured_vector)) 
@@ -206,17 +167,6 @@ def plot_population_for_states(measured_vector, title):
     plt.legend()
     plt.xticks([0,255],['|00000000⟩','|11111111⟩'], rotation=0)
 
-
-def plot_entropy_vs_theta(reduced_entropies_mat, theta_array):
-# Plot QES entropy vs theta.
-    fig = plt.subplots(figsize =(8, 3))
-    plt.errorbar(theta_array, measured_vector, color ='r', width = width, label ='data') 
-    # plt.bar(br2, measured_vector, color ='b', width = width, label ='expected population')
-    plt.title(title)
-    plt.xlabel('state')
-    plt.ylabel('Population')
-    plt.legend()
-    plt.xticks([0,255],['|00000000⟩','|11111111⟩'], rotation=0)
 
 def statevector_to_density_matrix(statevector: np.ndarray) -> np.ndarray:
     "Convert a statevector of length 2^n to a density matrix of shape (2^n, 2^n)"
@@ -271,110 +221,6 @@ def reduced_entropy_a_from_statevector(statevector_full, a):
     S = von_neumann_entropy(density_mat_reduced)
     return S
 
-
-def add_errors_to_cirq_circuit(
-    noiseless_cirq_circuit: cirq.Circuit,
-    noise_array: np.ndarray,
-    noise_bool: Sequence[bool],
-    include_rz_error: bool = False,
-) -> cirq.Circuit:
-    """
-    Add gate-angle errors to a Cirq circuit.
-
-    If noise_array has length 4:
-        noise_array = [error_syst_SQ, error_rand_SQ, error_syst_XX, error_rand_XX]
-        -> same behavior as before: same SQ distribution for Rx/Ry/Rz (if enabled).
-
-    If noise_array has length 6:
-        noise_array = [error_syst_Rx, error_syst_Ry, error_syst_Rz,
-                       error_rand_SQ,
-                       error_syst_ZZ, error_rand_ZZ]
-        -> different coherent means for Rx, Ry, Rz; same SQ std for all;
-           XX/ZZ gates use error_syst_ZZ, error_rand_ZZ.
-
-    noise_bool = [coherent_error_on, incoherent_error_on]
-    """
-    noise_array = np.array(noise_array, dtype=float)
-    n = noise_array.shape[0]
-
-    if n == 4:
-        # Legacy mode: one SQ distribution for all single-qubit rotations,
-        # and one XX distribution for two-qubit XX.
-        sq_noise_rx = noise_array
-        sq_noise_ry = noise_array
-        sq_noise_rz = noise_array
-        xx_noise    = noise_array
-
-    elif n == 6:
-        # New mode: different coherent means for Rx, Ry, Rz.
-        error_syst_Rx, error_syst_Ry, error_syst_Rz, error_rand_SQ, error_syst_ZZ, error_rand_ZZ = noise_array
-
-        # For generate_dtheta_SQ we need:
-        #   [error_syst_SQ, error_rand_SQ, error_syst_XX, error_rand_XX]
-        # We'll keep the ZZ parameters in slots 2 and 3 for consistency.
-        sq_noise_rx = np.array([error_syst_Rx, error_rand_SQ, error_syst_ZZ, error_rand_ZZ], dtype=float)
-        sq_noise_ry = np.array([error_syst_Ry, error_rand_SQ, error_syst_ZZ, error_rand_ZZ], dtype=float)
-        sq_noise_rz = np.array([error_syst_Rz, error_rand_SQ, error_syst_ZZ, error_rand_ZZ], dtype=float)
-
-        # For generate_dtheta_XX only indices 2 and 3 matter
-        # (loc = noise_array[2], scale = noise_array[3]).
-        xx_noise = np.array([0.0, 0.0, error_syst_ZZ, error_rand_ZZ], dtype=float)
-
-    else:
-        raise ValueError(
-            f"noise_array must have length 4 or 6, got {n}."
-        )
-
-    noisy_circuit = cirq.Circuit()
-
-    for moment in noiseless_cirq_circuit.moments:
-        new_ops = []
-        for op in moment.operations:
-            gate = op.gate
-            qs   = op.qubits
-
-            # ----- Single-qubit Rx -----
-            if isinstance(gate, cirq.XPowGate) and gate.global_shift == -0.5 and len(qs) == 1:
-                # cirq.rx(θ) -> XPowGate(exponent=θ/π, global_shift=-0.5)
-                theta = gate.exponent * np.pi
-                theta_noisy = theta + generate_dtheta_SQ(sq_noise_rx, noise_bool)
-                new_ops.append(cirq.rx(theta_noisy).on(qs[0]))
-
-            # ----- Single-qubit Ry -----
-            elif isinstance(gate, cirq.YPowGate) and gate.global_shift == -0.5 and len(qs) == 1:
-                # cirq.ry(θ) -> YPowGate(exponent=θ/π, global_shift=-0.5)
-                theta = gate.exponent * np.pi
-                theta_noisy = theta + generate_dtheta_SQ(sq_noise_ry, noise_bool)
-                new_ops.append(cirq.ry(theta_noisy).on(qs[0]))
-
-            # ----- Single-qubit Rz (optional) -----
-            elif isinstance(gate, cirq.ZPowGate) and gate.global_shift == -0.5 and len(qs) == 1:
-                # cirq.rz(θ) -> ZPowGate(exponent=θ/π, global_shift=-0.5)
-                theta = gate.exponent * np.pi
-                if include_rz_error:
-                    theta_noisy = theta + generate_dtheta_SQ(sq_noise_rz, noise_bool)
-                    new_ops.append(cirq.rz(theta_noisy).on(qs[0]))
-                else:
-                    new_ops.append(op)
-
-            # ----- Two-qubit XX -----
-            elif isinstance(gate, cirq.XXPowGate) and len(qs) == 2:
-                # XXPowGate(exponent=e) ~ exp(-i π e XX / 2)
-                theta = gate.exponent * np.pi
-                theta_noisy = theta - generate_dtheta_XX(xx_noise, noise_bool)
-                new_gate = cirq.XXPowGate(
-                    exponent=theta_noisy / np.pi,
-                    global_shift=gate.global_shift
-                )
-                new_ops.append(new_gate.on(*qs))
-
-            # ----- Other gates: unchanged -----
-            else:
-                new_ops.append(op)
-
-        noisy_circuit.append(new_ops)
-
-    return noisy_circuit
 
 
 def get_qiskit_statevector(qiskit_circuit):
@@ -683,22 +529,6 @@ def bootstrap_w_replacement(probs_dict, number_of_repeats=100, rng=None):
 
     return bootstrapped_counts
 
-def plot_entropy_vs_theta(reduced_entropies_mat, theta_array):
-# Plot QES entropy vs theta.
-    fig = plt.subplots(figsize =(8, 3))
-    plt.errorbar(theta_array, measured_vector, color ='r', width = width, label ='data') 
-    # plt.bar(br2, measured_vector, color ='b', width = width, label ='expected population')
-    plt.title(title)
-    plt.xlabel('state')
-    plt.ylabel('Population')
-    plt.legend()
-    plt.xticks([0,255],['|00000000⟩','|11111111⟩'], rotation=0)
-
-def statevector_to_density_matrix(statevector: np.ndarray) -> np.ndarray:
-    "Convert a statevector of length 2^n to a density matrix of shape (2^n, 2^n)"
-    statevector = statevector.reshape(-1, 1)  # column vector
-    density_matrix = statevector @ statevector.conj().T
-    return density_matrix
 
 def partial_trace(density_matrix: np.ndarray, traced_out: list) -> np.ndarray:
     "Compute reduced density matrix by tracing out specific subsystems"
@@ -716,12 +546,6 @@ def partial_trace(density_matrix: np.ndarray, traced_out: list) -> np.ndarray:
 
     return rho_reduced.full()  # convert Qobj back to NumPy
 
-def von_neumann_entropy(reduced_density_matrix: np.ndarray, base=2) -> float:
-    "Compute von Neumann entropy given the density matrix"
-    rho_qobj = qt.Qobj(reduced_density_matrix)
-    return qt.entropy_vn(rho_qobj, base=base)
-
-# TODO: this function should be decommissioned
 def reduced_entropy_abc_from_statevector(statevector_full, a, b, c):
     """
     psi: length 2^n complex array (Qiskit ordering)
@@ -776,133 +600,6 @@ def reduced_probs_from_statevector(sv, qoi_indices):
         reduced[reduced_bits] += p
 
     return dict(reduced)
-
-# Functions to modify circuits in IonQ basis ------------------------------------------
-
-def _mod_turns(x: float) -> float:
-    """Normalize a phase in turns to [0,1)."""
-    y = x % 1.0
-    return 0.0 if abs(y - 1.0) < 1e-12 else y
-
-def generate_dphi_SQ_turns(noise_array: np.ndarray, noise_bool: Sequence[bool]) -> float:
-    """
-    Single-qubit (GPI/GPI2) phase-axis error in *turns*.
-    noise_array = [error_syst_SQ, error_rand_SQ, error_syst_XX, error_rand_XX]
-    noise_bool  = [coherent_error, incoherent_error]
-    """
-    error_syst_SQ, error_rand_SQ, _, _ = noise_array
-    coherent_error, incoherent_error   = noise_bool
-
-    loc   = error_syst_SQ * (1.0 if coherent_error   else 0.0)
-    scale = error_rand_SQ * (1.0 if incoherent_error else 0.0)
-
-    return float(np.random.normal(loc=loc, scale=scale))
-
-
-def generate_dphi_ZZ_turns(noise_array: np.ndarray, noise_bool: Sequence[bool]) -> float:
-    """
-    Two-qubit ZZ over/under-rotation error in *turns*.
-    noise_array = [error_syst_SQ, error_rand_SQ, error_syst_XX, error_rand_XX]
-    noise_bool  = [coherent_error, incoherent_error]
-    """
-    _, _, error_syst_XX, error_rand_XX = noise_array
-    coherent_error, incoherent_error   = noise_bool
-
-    loc   = error_syst_XX * (1.0 if coherent_error   else 0.0)
-    scale = error_rand_XX * (1.0 if incoherent_error else 0.0)
-
-    return float(np.random.normal(loc=loc, scale=scale))
-
-def add_errors_to_ionq_circuit(
-    noiseless_circuit: QuantumCircuit,
-    noise_array: np.ndarray,
-    noise_bool: Sequence[bool],
-    coherent_errors: Optional[np.ndarray] = None,
-) -> QuantumCircuit:
-    """
-    Adds small errors (in *turns*) to IonQ-native GPI, GPI2, and ZZ gates.
-
-    - GPI / GPI2: perturb the phase parameter (axis in XY plane) by Δφ (turns).
-    - ZZ: over/under-rotate the ZZ angle in turns by Δφ, then (optionally) add
-          an additional per-gate coherent offset provided by `coherent_errors`.
-
-    Args:
-        noiseless_circuit: QuantumCircuit using qiskit_ionq GPIGate, GPI2Gate, ZZGate.
-        noise_array: np.array([error_syst_SQ, error_rand_SQ, error_syst_ZZ, error_rand_ZZ]),
-                     interpreted in *turns*.
-        noise_bool: [coherent_error, incoherent_error] booleans.
-        coherent_errors: Optional array of per-ZZ-gate coherent offsets (in turns).
-                         If the circuit has N ZZ gates, this must have length >= N.
-                         The i-th entry is applied to the i-th ZZ gate encountered.
-
-    Returns:
-        QuantumCircuit: new circuit with noisy GPI/GPI2/ZZ gates.
-    """
-    if coherent_errors is not None:
-        coherent_errors = np.asarray(coherent_errors, dtype=float).ravel()
-
-    noisy_circuit = QuantumCircuit(
-        noiseless_circuit.num_qubits,
-        noiseless_circuit.num_clbits,
-    )
-
-    zz_count = 0  # counts ZZ gates as we traverse the circuit
-
-    for instruction in noiseless_circuit.data:
-        instr = instruction.operation
-        qargs = instruction.qubits
-        cargs = instruction.clbits
-
-        name = instr.name.lower()
-        params = list(instr.params)
-
-        # ---------- Single-qubit GPI / GPI2 ----------
-        if name == "gpi" or name == "gpi2":
-            if len(params) != 1:
-                raise ValueError(f"{name} gate expected 1 parameter, got {len(params)}")
-
-            phi = float(params[0])  # in turns
-            dphi = generate_dphi_SQ_turns(noise_array, noise_bool)
-            phi_noisy = _mod_turns(phi + dphi)
-
-            noisy_gate = GPIGate(phi_noisy) if name == "gpi" else GPI2Gate(phi_noisy)
-            noisy_circuit.append(noisy_gate, qargs, cargs)
-
-        # ---------- Two-qubit ZZ ----------
-        elif name == "zz":
-            if len(params) != 1:
-                raise ValueError(f"zz gate expected 1 parameter, got {len(params)}")
-
-            zz_phase = float(params[0])  # in turns, typically in [-0.25, 0.25]
-            dphi_zz  = generate_dphi_ZZ_turns(noise_array, noise_bool)
-
-            # Optional per-gate coherent offset
-            extra = 0.0
-            if coherent_errors is not None:
-                if zz_count >= len(coherent_errors):
-                    raise ValueError(
-                        f"coherent_errors has length {len(coherent_errors)} "
-                        f"but circuit contains more than {len(coherent_errors)} ZZ gates "
-                        f"(failed at ZZ index {zz_count})."
-                    )
-                extra = float(coherent_errors[zz_count])
-
-            # Apply: existing model + extra offset
-            zz_phase_noisy = zz_phase - np.sign(zz_phase) * dphi_zz + extra
-
-            # (Optional) clamp if you want to enforce IonQ allowed range:
-            # zz_phase_noisy = max(-0.25, min(0.25, zz_phase_noisy))
-
-            noisy_gate = ZZGate(zz_phase_noisy)
-            noisy_circuit.append(noisy_gate, qargs, cargs)
-
-            zz_count += 1
-
-        # ---------- Other gates: unchanged ----------
-        else:
-            noisy_circuit.append(instr, qargs, cargs)
-
-    return noisy_circuit
 
 
 # ---------- Circuit Conversion functions ----------
@@ -1237,28 +934,7 @@ def measure_Zbasis(qc,qoi, NUM_QUBITS):               # measure in Pauli Z basis
 
 
 
-def expectation_of_pauli_string(measure_data,p_string):               
-    """
-    Compute expectation value of a Pauli string on qoi using measurement data
-    p_string: tuple/list of ['I','X','Y','Z'] of length len(qoi)
-    """
-    p_string=tuple(p_string)
-    if not 'I' in p_string:
-        data=measure_data[p_string]
-        exp_val=sum([np.prod(ele) for ele in data])/len(data)
-        return exp_val
-    indices = [i for i, x in enumerate(p_string) if x == 'I']
-    k=len(indices)
-    exp_val_list=[]
-    for extend in product(['X','Y','Z'],repeat=k):
-        p_string_extended=list(p_string)
-        for i in range(k):
-            p_string_extended[indices[i]]=extend[i]
-        data=measure_data[tuple(p_string_extended)].copy()
-        short_data=[np.delete(ele,indices) for ele in data]
-        exp_val=sum([np.prod(ele) for ele in short_data])/len(short_data)
-        exp_val_list.append(exp_val)
-    return sum(exp_val_list)/len(exp_val_list)
+
     
     
 def mlm_rho(mu):                   # maximal-likelihood correction algorithm, removing negative eigenvalue
@@ -1348,9 +1024,387 @@ def reduced_rho_from_statevector_numpy(psi: np.ndarray, keep_indices, n_qubits: 
     rho = psi_mat @ psi_mat.conj().T
     return rho
 
-def von_neumann_entropy_from_rho(rho: np.ndarray, base=2) -> float:
-    rho = 0.5 * (rho + rho.conj().T)  # hermitize for numerical stability
-    evals = np.linalg.eigvalsh(rho).real
-    evals = np.clip(evals, 0.0, 1.0)
-    evals = evals[evals > 0]
-    return float(-np.sum(evals * (np.log(evals) / np.log(base))))
+
+
+
+def state_reconstruction_from_probs(measure_data, qoi, eps=1e-12, use_mlm=True):
+    """
+    Reconstruct reduced density matrix on qoi using Pauli tomography,
+    using probability distributions instead of shot lists.
+
+    This is the probability-analogue of `state_reconstruction` that
+    previously used simulated ±1 measurement outcomes.
+
+    Differences from state_reconstruction:
+      - measure_data[p_string] is now a dict: bitstring -> probability,
+        where bitstring is over the *already-traced-out* tomography qubits.
+      - qoi is just used to set n = len(qoi); the bitstrings are already
+        reduced to those qubits.
+
+    Parameters
+    ----------
+    measure_data : dict
+        Keys: Pauli strings as TUPLES, e.g. ('X','Y','Z','X'),
+              exactly the same objects you used as keys before
+              (e.g. from boundary_basis_set).
+
+        Values: dict mapping
+            bitstring (e.g. "0101") -> probability
+
+        Bitstrings are measurement outcomes in the Pauli basis specified
+        by the key p_string. Because your circuits already include the
+        appropriate pre-rotations for X/Y/Z, we can interpret:
+            bit '0' -> eigenvalue +1
+            bit '1' -> eigenvalue -1
+        for ALL p_strings in measure_data.
+
+    qoi : list[int]
+        Indices of qubits of interest (only used for n = len(qoi)).
+
+    eps : float
+        Cutoff for eigenvalues in entropy calculation.
+
+    use_mlm : bool
+        If True, apply maximal-likelihood projection mlm_rho(mu).
+
+    Returns
+    -------
+    rho : np.ndarray
+        Reconstructed density matrix on the tomography qubits.
+
+    entropy : float
+        von Neumann entropy (bits).
+    """
+    n   = len(qoi)
+    dim = 2**n
+
+    # Use exactly the same Pauli basis as your measurement set
+    basis_strings = list(measure_data.keys())  # tuples like ('X','Y','Z','X')
+
+    # Build matrices for each measured Pauli string
+    basis_matrices = [pauli_matrix_from_string(p_string) for p_string in basis_strings]
+
+    # Tomographic estimate μ
+    mu = np.zeros((dim, dim), dtype=complex)
+
+    for p_string, P in zip(basis_strings, basis_matrices):
+
+        probs = measure_data[p_string]   # dict: bitstring -> probability
+
+        # Compute ⟨P⟩ from probabilities.
+        # Because pre-rotations diagonalize P into Z,
+        # we can use the same mapping for all bases:
+        #     bit '0' -> eigenvalue +1
+        #     bit '1' -> eigenvalue -1
+        exp_val = 0.0
+        for bitstring, p in probs.items():
+            product = 1.0
+            for b in bitstring:
+                product *= (+1.0 if b == '0' else -1.0)
+            exp_val += p * product
+
+        mu += (exp_val / (2**n)) * P
+
+    # Add identity component
+    mu += (1.0 / (2**n)) * np.eye(dim, dtype=complex)
+
+    # Enforce Hermiticity and trace-normalize
+    mu = 0.5 * (mu + mu.conj().T)
+    tr = np.trace(mu).real
+    if tr != 0.0:
+        mu /= tr
+
+    rho = mlm_rho(mu) if use_mlm else mu
+
+    # Eigen-decomposition & entropy
+    evals, _ = np.linalg.eigh(rho)
+    evals = np.clip(evals.real, eps, None)
+    evals /= np.sum(evals)
+    entropy = -np.sum(evals * np.log2(evals))
+
+    return rho, entropy
+
+def classical_fidelity(p, q, eps=1e-15):
+    """
+    Compute classical fidelity between two probability distributions.
+    
+    Fidelity is:
+        F(p,q) = ( sum_i sqrt(p_i * q_i) )^2
+    
+    Parameters
+    ----------
+    p : array-like
+        First distribution (e.g., measured_list)
+    q : array-like
+        Second distribution (e.g., ideal_list)
+    eps : float
+        Numerical cutoff to avoid sqrt of negative numbers.
+    
+    Returns
+    -------
+    float : fidelity value in [0,1]
+    """
+
+    # Convert to numpy arrays
+    p = np.asarray(p, dtype=float)
+    q = np.asarray(q, dtype=float)
+
+    # Check lengths
+    if p.shape != q.shape:
+        raise ValueError(f"Distributions have different lengths: {len(p)} vs {len(q)}")
+
+    # Clip negative rounding errors
+    p = np.clip(p, 0, None)
+    q = np.clip(q, 0, None)
+
+    # Normalize if necessary
+    sp = p.sum()
+    sq = q.sum()
+    if abs(sp - 1) > 1e-12:
+        p = p / sp
+    if abs(sq - 1) > 1e-12:
+        q = q / sq
+
+    # Compute fidelity
+    bc = np.sum(np.sqrt(p * q + eps))  # Bhattacharyya coeff
+    F = bc**2
+
+    # Numerical range enforcement
+    return float(max(0, min(1, F)))
+
+
+# Functions to extract data from job_id and data_file_database ----------------------------------------
+
+def job_ids_from_circuit_name(circuit_name: str, spreadsheet_destination):
+    """
+    Extract job IDs from a circuit name.
+    
+    Args:
+        circuit_name: str, name of the circuit
+        spreadsheet_destination: str or pd.DataFrame, either a file path to CSV or a pandas DataFrame
+
+    Returns:
+        job_ids: list[str], list of job IDs
+    """
+    
+    # Detect if spreadsheet_destination is a string (file path) or DataFrame
+    if isinstance(spreadsheet_destination, str):
+        df = pd.read_csv(spreadsheet_destination)   # It's a file path - read the CSV file
+    elif isinstance(spreadsheet_destination, pd.DataFrame):
+        df = spreadsheet_destination     # It's already a DataFrame - use it directly   
+    else:
+        raise TypeError(
+            f"spreadsheet_destination must be either a string (file path) or a pandas DataFrame, "
+            f"got {type(spreadsheet_destination).__name__}"
+        )
+    
+    # Filter rows where circ_name matches circuit_name
+    matching_rows = df[df['circ_name'] == circuit_name]
+    
+    # Extract job_id column and convert to list
+    job_ids = matching_rows['job_id'].tolist()
+    
+    return job_ids
+
+
+# job_ids = job_ids_from_circuit_name(
+#     circuit_name = "00_Data_withMagic_theta_0785_mu_027_bound_XXXX_rx010_ry020_rz000_xx027.qpy",
+#     spreadsheet_destination = JOBS_LIST_DATABASE
+# )
+
+def data_details_from_job_id(job_id: list[str], data_file_database: pd.DataFrame, get_completion_time = False):
+    """
+    Extracts data run details from a job ID, like qubit_mapping and data file path.
+
+    Args:
+        job_id: List of job IDs to extract details for.
+        data_file_database: A pandas DataFrame containing job status details (from job_status.csv).
+
+    Returns:
+        mappings: List of Mapping values (as lists of integers) corresponding to each job_id (in same order)
+        file_paths: List of File_Path values corresponding to each job_id (in same order)
+    """
+    import ast
+    
+    mappings = []
+    file_paths = []
+    completion_times = []
+    
+    # Iterate through job_id list to maintain order
+    for jid in job_id:
+        # Find the row with matching job_id
+        matching_row = data_file_database[data_file_database['job_id'] == jid]
+        
+        if not matching_row.empty:
+            # Extract Mapping and File_Path from the first matching row
+            mapping_str = matching_row.iloc[0]['Mapping']
+            file_path = matching_row.iloc[0]['Data_file_path']
+            if get_completion_time:
+                completion_time = matching_row.iloc[0]['completion_time']
+                completion_times.append(completion_time)
+
+            
+            # Convert Mapping string to list of integers
+            if isinstance(mapping_str, str):
+                try:
+                    mapping = ast.literal_eval(mapping_str)
+                    # Ensure it's a list of integers
+                    if isinstance(mapping, list):
+                        mapping = [int(x) for x in mapping]
+                    else:
+                        mapping = None
+                except (ValueError, SyntaxError):
+                    mapping = None
+            elif isinstance(mapping_str, list):
+                # Already a list, just ensure integers
+                mapping = [int(x) for x in mapping_str]
+            else:
+                mapping = None
+            
+            mappings.append(mapping)
+            file_paths.append(file_path)
+        else:
+            # If job_id not found, append None (or you could raise an error)
+            mappings.append(None)
+            file_paths.append(None)
+    
+    if get_completion_time:
+        return mappings, file_paths, completion_times
+    else:
+        return mappings, file_paths
+    
+    
+
+
+# Set this to your repo root if needed (or leave as "." if your notebook runs from repo root)
+BASE_DIR = Path(".").resolve()
+
+def normalize_path(p: str) -> Path:
+    """
+    Convert Windows-style paths (backslashes) to the current OS path,
+    and resolve relative paths against BASE_DIR.
+    """
+    # If it looks like a windows path, convert it
+    if isinstance(p, str) and ("\\" in p):
+        p = str(PureWindowsPath(p))  # converts to a normalized windows path string
+        # Now reinterpret that path on current OS as a POSIX-ish path
+        # PureWindowsPath -> parts -> Path
+        p = Path(*PureWindowsPath(p).parts)
+    else:
+        p = Path(p)
+
+    # Resolve relative paths relative to BASE_DIR
+    if not p.is_absolute():
+        p = (BASE_DIR / p)
+
+    return p
+
+
+def circuit_details_to_qubit_probs(mappings: List[int], file_paths: List[str]):
+    """ 
+    Extracts qubit probabilities from a list of file paths and mapping.
+    Needs to import remap_ion_probs_to_qubit_probs from data_analysis.py
+    """
+    qubit_probs_list = [] # list of qubit probs for each mapping
+    qubit_probs_dict = {} # combines all qubit probs for all mappings (more relevant)
+    for mapping, file_path in zip(mappings, file_paths):
+        file_path = normalize_path(file_path)
+        with open(file_path, "r") as f:
+            data = json.load(f)
+        
+        # read probabilities from data
+        qubit_probs = remap_ion_probs_to_qubit_probs(
+            ion_result = data,
+            mapping = mapping,
+            renormalize = False,
+            bit_order = "right_to_left",
+        )
+        qubit_probs_list.append(qubit_probs)
+    
+    # combine all qubit probs for all mappings
+    for qubit_probs in qubit_probs_list:
+        for key, value in qubit_probs.items():
+            if key not in qubit_probs_dict:
+                qubit_probs_dict[key] = value
+            else:
+                qubit_probs_dict[key] += value
+    return qubit_probs_list, qubit_probs_dict
+
+
+def reverse_bitstring_keys(input_dict):
+    """
+    Returns a new dictionary with the same values as input_dict,
+    but with each key (bitstring) reversed in order.
+    E.g., key '01234' becomes '43210'.
+    """
+    return {key[::-1]: value for key, value in input_dict.items()}
+
+
+
+
+
+def compute_pauli_expectations(measure_dict):
+    """
+    Computes the expectation value for each p_string in measure_dict.
+    For each tuple key (e.g., (+1,-1,+1)) inside measure_dict[p_string], multiply
+    the product of its elements by its associated probability (value), and sum over all tuples.
+
+    Returns:
+        A dictionary: {p_string: expectation_value}
+    """
+    exp_dict = {}
+    for p_string, outcomes in measure_dict.items():
+        expectation_value = 0
+        for output_tuple, prob in outcomes.items():
+            prod = 1
+            for num in output_tuple:
+                prod *= num
+            expectation_value += prod * prob
+        exp_dict[p_string] = expectation_value
+    return exp_dict
+
+
+from itertools import product
+
+
+
+
+
+def convert_to_ordered_list(prob_dict, num_qubits=10):
+    """Return a list of probabilities indexed 0..2^n-1 in Qiskit ordering."""
+    ordered = np.zeros(2**num_qubits)
+    for bitstring, p in prob_dict.items():
+        idx = int(bitstring, 2)  # Qiskit-consistent
+        ordered[idx] = p
+    return ordered
+
+# Functions to calculate entropy ----------------------------------------------------
+
+
+
+def reduced_probs_from_statevector(sv, qoi_indices):
+    """
+    sv           : qiskit.quantum_info.Statevector
+    qoi_indices  : list/array of physical qubit indices (e.g. boundary_ind or bulk_indices)
+
+    Returns:
+        dict mapping bitstring over qoi_indices -> probability
+
+    Assumes Qiskit bitstring convention: rightmost bit is qubit 0, etc.
+    """
+    probs_full = sv.probabilities_dict()  # full 10-qubit bitstrings -> probs
+    num_qubits = int(round(np.log2(len(sv.data))))
+
+    reduced = defaultdict(float)
+
+    for full_bits, p in probs_full.items():
+        # full_bits is a string of length num_qubits, rightmost bit = qubit 0
+        # We want bits ordered according to qoi_indices
+        bits_qoi = []
+        for q in qoi_indices:
+            # index from right since qubit 0 is rightmost bit
+            bits_qoi.append(full_bits[num_qubits - 1 - q])
+        reduced_bits = "".join(bits_qoi)
+        reduced[reduced_bits] += p
+
+    return dict(reduced)

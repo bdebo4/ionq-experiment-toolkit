@@ -15,13 +15,45 @@ CONFIG_GENERAL = Path("Configurations/General_config.json")
 
 
 def load_config():
+    """
+    Load the API key and backend name from the configuration files.
+
+    Returns
+    -------
+    tuple[str, str]
+        Tuple containing the API key and backend name. If ``BACKEND_NAME`` is not
+        defined in the general configuration file, ``"simulator"`` is used as the
+        default backend name.
+    """
     with open(CONFIG_GENERAL, "r") as f:
         cfg = json.load(f)
     with open(API_CONFIG, "r") as f:
         api_cfg = json.load(f)
     return api_cfg["IONQ_API_KEY"], cfg.get("BACKEND_NAME", "simulator")
 def cancel_jobs_after_index(start_index):
+    """
+    Cancel all IonQ jobs listed after a given row index in the job status file.
 
+    The function reads the job_status.csv file, selects all rows after
+    ``start_index``, extracts the corresponding job IDs, and attempts to cancel
+    each job using the configured IonQ backend.
+
+    Parameters
+    ----------
+    start_index : int
+        Row index after which jobs should be cancelled. The job at
+        ``start_index`` itself is not cancelled.
+
+    Returns
+    -------
+    None
+        Prints cancellation progress and error messages to the console.
+
+    Notes
+    -----
+    The job status CSV file must contain a ``job_id`` column. Backend credentials
+    and backend name are loaded using ``load_config``.
+    """
     # Load status file
     df = pd.read_csv(JOBS_STATUS_FILE)
 
