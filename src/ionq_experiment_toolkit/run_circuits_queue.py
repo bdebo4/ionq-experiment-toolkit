@@ -66,15 +66,28 @@ if not backend_name or not str(backend_name).strip():
 
 def load_config_experiment_from_queue(row):
     """
-    Extracts experiment_type, shots, qubit_config, and Characteristic from a CSV queue row.
+    Parse and validate experiment settings from one experiment_queue.csv row.
 
-    Expected fields:
-        Experiment_Type:   "2QEcho", "2QCumulative", or "Data"
-        shots:             int
-        qpair:             JSON list (e.g. [[5,6],[7,8]]) for 2Q experiments
-        Characteristic:       "0.5_1.2" for Data
+    Parameters
+    ----------
+    row : pandas.Series or dict-like
+        Queue row containing experiment settings.
+
+    Returns
+    -------
+    tuple
+        ``(experiment, shots, qubit_config, Characteristic, debiasing_value)``.
+
+    Raises
+    ------
+    ValueError
+        If a required value is missing, malformed, or invalid.
+    KeyError
+        If ``qpair`` or ``Characteristic`` is missing for an experiment type that
+        requires it.
     """
-
+    
+        
     # ----- EXPERIMENT TYPE -----
     experiment = (row.get("Experiment_Type") or "").strip()
     if experiment == "":
@@ -146,11 +159,13 @@ def load_config_experiment_from_queue(row):
     return experiment, shots, qubit_config, Characteristic,debiasing_value
 
 def ensure_jobs_header(path: Path):
+    """If jobs_submitted.csv doesnot exist it creates it with the header""" 
     if not path.exists():
         with open(path, "w", newline="") as f:
             w = csv.writer(f)
             w.writerow(["submitted_utc","backend","noise_model", "experiment","circ_name","job_id","qubit_mapping","Qubit_Pair", "shots","Characteristic", "circuit_file"])
 def write_results(experiment,backend_name,noise_model,job_id,shots,qubit_pair,circ_name,qpy_path,Characteristic):
+    """Records submission of jobs to jobs_submitted.csv""" 
     with open(JOBS_SUBMITTED_LOG, "a", newline="") as f_out:
         
         w = csv.writer(f_out)
@@ -176,13 +191,18 @@ def write_results(experiment,backend_name,noise_model,job_id,shots,qubit_pair,ci
         time.sleep(0.2)
 def load_and_run_qpy_circuits(experiment,folder_path, backend_name,noise_model,token, shots,qubit_pairs,Characteristic,debiasing = False):
     """
-    Load all .qpy circuit files from a folder and run them.
-    
+    Load all QPY circuits from a folder, submit them to an IonQ backend, and log the jobs.
+
     Args:
-        folder_path: Path to folder containing .qpy files
-        token: IonQ API token
-        backend_name: Backend to run on
-        shots: Number of shots
+        experiment: Experiment type, such as "2QEcho", "2QCumulative", or "Data".
+        folder_path: Path to the folder containing .qpy files.
+        backend_name: Backend to run on.
+        noise_model: Noise model for simulator runs, or None.
+        token: IonQ API token.
+        shots: Number of shots.
+        qubit_pairs: Qubit pairs used for characterization experiments.
+        Characteristic: Data characteristic label, or "-".
+        debiasing: Whether to use debiasing for hardware data runs.
     """
     
     try:
@@ -294,7 +314,7 @@ def load_and_run_qpy_circuits(experiment,folder_path, backend_name,noise_model,t
 
 def load_next_from_queue(path: Path):
     """
-    Uses boolean mask (submitted == False) to find the next pending row.
+    Uses boolean mask (submitted == False) to find the next pending row from a file, usually experiment_queue.csv.
     Returns (row_index, row_dict) or (None, None) if everything is done.
     """
 
@@ -317,7 +337,7 @@ def load_next_from_queue(path: Path):
 
 def mark_queue_row_submitted(path: Path, row_index: int):
     """
-    Mark the queue row at row_index as submitted='true'.
+    Mark the queue row at row_index as submitted='true' - Happens in experiment_queue.csv.
     """
     with open(path, newline="") as f:
         reader = csv.DictReader(f)

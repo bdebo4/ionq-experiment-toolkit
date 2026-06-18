@@ -319,44 +319,24 @@ def add_pauli_measures_to_dict(p_string, measure_dict, qubit_probs):
 
 def expectation_of_pauli_string_from_probs(measure_data, p_string):
     """
-    Compute ⟨P⟩ for a Pauli string p_string using measurement data stored as
-    eigenvalue-count dictionaries rather than per-shot lists.
-
+    Compute the expectation value of a Pauli string from eigenvalue counts.
+    
     Parameters
     ----------
     measure_data : dict
-        Keys: Pauli strings as tuples, e.g. ('X','Y','Z','X').
-        Values: dict mapping eigenvalue tuples -> counts, e.g.
-            {
-              ( 1,  1,  1,  1): 47.0,
-              ( 1,  1,  1, -1): 71.0,
-              ...
-            }
-
-        This is exactly the structure you showed for measure_boundary.
-
+        Dictionary mapping Pauli-string tuples to outcome-count dictionaries.
     p_string : iterable of str
-        Pauli labels, e.g. ('X','I','Z','Y'). May contain 'I'.
-
+        Pauli string containing ``"I"``, ``"X"``, ``"Y"``, and ``"Z"``.
+    
     Returns
     -------
-    exp_val : float
-        The expectation value ⟨P⟩.
-
+    float
+        Expectation value of the Pauli string.
+    
     Notes
     -----
-    - If p_string has no 'I', we compute:
-          ⟨P⟩ = ( Σ_outcomes [ (∏ eigenvalues) * count ] ) / ( Σ_outcomes count )
-    - If p_string contains 'I's, we mimic your original expectation_of_pauli_string:
-        * Find indices of 'I' positions.
-        * For each way of replacing "I" with X/Y/Z:
-              p_ext ∈ {X,Y,Z}^#I
-          we:
-            - Look up measure_data[p_ext] (dict eigenvalues -> counts)
-            - For each eigenvalue tuple, delete the 'I' positions
-              before taking the product.
-            - Compute ⟨P_ext_reduced⟩ as weighted average with counts.
-        * Return the average of these expectations over all extensions.
+    If ``p_string`` contains identity operators, those positions are averaged over
+    all corresponding ``X``, ``Y``, and ``Z`` measurement bases.
     """
     p_string = tuple(p_string)
 
@@ -468,19 +448,17 @@ def bootstrap_w_replacement(probs_dict, number_of_repeats=100, rng=None):
     Parameters
     ----------
     probs_dict : dict
-        Dictionary mapping bitstring -> count (number of times measured).
+        Dictionary mapping bitstrings to counts.
     number_of_repeats : int, optional
-        How many bootstrap resamples to generate. Default is 100.
+        Number of bootstrap resamples to generate. Default is 100.
     rng : np.random.Generator, optional
-        Optional NumPy random generator for reproducibility.
+        Random number generator for reproducibility.
 
     Returns
     -------
-    bootstrapped_counts : dict
-        Dictionary of the same keys (bitstrings), where the values are the
-        total counts from all bootstrap resamples combined.
-        The sum of the values will be:
-            sum(probs_dict.values()) * number_of_repeats
+    dict
+        Bootstrapped counts with the same bitstring keys. The total count is
+        ``sum(probs_dict.values()) * number_of_repeats``.
     """
     if rng is None:
         rng = np.random.default_rng()
@@ -883,10 +861,19 @@ def pauli_matrix_from_string(p_string):
 
 def generate_pauli_basis(qoi):
     """
-    qoi: list of qubit indices whose reduced density matrix we reconstruct.
-    We return:
-      basis_strings: list of Pauli label tuples, e.g. ('X','Z','I',...)
-      basis_matrices: corresponding numpy matrices (excluding all-I string)
+    Generate Pauli basis strings and matrices for a subsystem.
+
+    Parameters
+    ----------
+    qoi : list of int
+        Qubit indices included in the subsystem.
+
+    Returns
+    -------
+    tuple
+        ``(basis_strings, basis_matrices)``, where ``basis_strings`` contains Pauli
+        label tuples and ``basis_matrices`` contains the corresponding matrices.
+        The all-identity string is excluded.
     """
     n = len(qoi)
     labels = ['I', 'X', 'Y', 'Z']
@@ -963,7 +950,7 @@ def mlm_rho(mu):                   # maximal-likelihood correction algorithm, re
 def state_reconstruction(measure_data, qoi, eps=1e-12, use_mlm=True):
     """
     Reconstruct reduced density matrix on qoi using Pauli tomography:
-      mu = (1/2^n) [ I + sum_i <P_i> P_i ]
+    mu = (1/2^n) [ I + sum_i <P_i> P_i ]
     If use_mlm=True, project mu to the closest physical density matrix via mlm_rho.
     Returns (rho_phys, entropy).
     """
@@ -1029,51 +1016,25 @@ def reduced_rho_from_statevector_numpy(psi: np.ndarray, keep_indices, n_qubits: 
 
 def state_reconstruction_from_probs(measure_data, qoi, eps=1e-12, use_mlm=True):
     """
-    Reconstruct reduced density matrix on qoi using Pauli tomography,
-    using probability distributions instead of shot lists.
-
-    This is the probability-analogue of `state_reconstruction` that
-    previously used simulated ±1 measurement outcomes.
-
-    Differences from state_reconstruction:
-      - measure_data[p_string] is now a dict: bitstring -> probability,
-        where bitstring is over the *already-traced-out* tomography qubits.
-      - qoi is just used to set n = len(qoi); the bitstrings are already
-        reduced to those qubits.
-
+    Reconstruct a reduced density matrix from Pauli-basis probabilities.
+    
     Parameters
     ----------
     measure_data : dict
-        Keys: Pauli strings as TUPLES, e.g. ('X','Y','Z','X'),
-              exactly the same objects you used as keys before
-              (e.g. from boundary_basis_set).
-
-        Values: dict mapping
-            bitstring (e.g. "0101") -> probability
-
-        Bitstrings are measurement outcomes in the Pauli basis specified
-        by the key p_string. Because your circuits already include the
-        appropriate pre-rotations for X/Y/Z, we can interpret:
-            bit '0' -> eigenvalue +1
-            bit '1' -> eigenvalue -1
-        for ALL p_strings in measure_data.
-
-    qoi : list[int]
-        Indices of qubits of interest (only used for n = len(qoi)).
-
+        Dictionary mapping Pauli-string tuples to bitstring-probability
+        dictionaries.
+    qoi : list of int
+        Qubits of interest. Only ``len(qoi)`` is used.
     eps : float
-        Cutoff for eigenvalues in entropy calculation.
-
+        Eigenvalue cutoff used in the entropy calculation.
     use_mlm : bool
-        If True, apply maximal-likelihood projection mlm_rho(mu).
-
+        Whether to apply maximal-likelihood projection.
+    
     Returns
     -------
-    rho : np.ndarray
-        Reconstructed density matrix on the tomography qubits.
-
-    entropy : float
-        von Neumann entropy (bits).
+    tuple
+        ``(rho, entropy)``, where ``rho`` is the reconstructed density matrix and
+        ``entropy`` is the von Neumann entropy in bits.
     """
     n   = len(qoi)
     dim = 2**n

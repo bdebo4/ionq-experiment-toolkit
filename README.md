@@ -32,6 +32,20 @@ A typical import is:
 
     import ionq_experiment_toolkit
 
+## Documentation
+
+The project documentation is built with Sphinx.
+
+Install the documentation dependencies:
+
+```powershell
+python -m pip install sphinx sphinx-rtd-theme
+xgit 
+To build the HTML documentation locally:
+
+```powershell
+sphinx-build -b html docs\source docs\_build\html
+
 ## Notes
 
 This is not an official IonQ package. It is an independent research software toolkit developed by academic users for experiment submission, result retrieval, and data-quality workflows.
