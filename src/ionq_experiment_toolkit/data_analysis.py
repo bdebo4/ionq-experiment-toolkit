@@ -33,14 +33,106 @@ backend = provider.get_backend("qpu.forte-1", gateset="native")
 STATUS_OUT     = Path("Execution_History_and_Status/job_status.csv")
 JOBS_SUBMITTED = Path("Execution_History_and_Status/jobs_submitted.csv")
 FIDELITY_OUT = Path("Execution_History_and_Status/fidelities_time.csv")
-# FIDELITY_OUT.mkdir(exist_ok=True)
-# ----------------------------
+FIDELITY_COLUMNS = [
+    "timestamp",
+    "experiment",
+    "job_id",
+    "q1",
+    "q2",
+    "qubit_pair",
+    "shots",
+    "raw_data_file",
+    "fidelity",
+    "uncertainty",
+]
 
-# raw_data_loaded = load_json_innerkeys_binary(
-#     RAW_FILEPATH, bit_width=36)
+
+def clean_timestamp_from_row(job_row, raw_filepath=None) -> str:
+    """Get a useful timestamp for the fidelity CSV."""
+
+    if raw_filepath is not None:
+        stem = Path(raw_filepath).stem
+        parts = stem.split("_")
+
+        if len(parts) >= 2:
+            date_part = parts[0]
+            time_part = parts[1]
+
+            if date_part.count("-") == 2 and time_part.count("-") == 2:
+                return f"{date_part}_{time_part}"
+
+    possible_cols = [
+        "submitted_utc",
+        "Submitted_UTC",
+        "submitted_time",
+        "Submitted_Time",
+        "time",
+        "Time",
+    ]
+
+    for col in possible_cols:
+        if col in job_row.index and pd.notna(job_row[col]):
+            raw = str(job_row[col]).strip()
+            return raw.replace(":", "-").replace("/", "-").replace(" ", "_")
+
+    return datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
 
 
-# test_job_id = "019aa190-789c-745d-b64f-a9271bec74cd"
+def to_plain_python_value(x):
+    """Convert NumPy scalar values into normal Python values."""
+
+    if x is None:
+        return None
+
+    if isinstance(x, np.generic):
+        return x.item()
+
+    return x
+
+
+def summarize_fidelity_result(fid_result):
+    """Extract fidelity and uncertainty from raw_data_to_fidelity output."""
+
+    if fid_result is None:
+        return {
+            "fidelity": None,
+            "uncertainty": None,
+        }
+
+    if isinstance(fid_result, dict):
+        return {
+            "fidelity": to_plain_python_value(fid_result.get("F_g")),
+            "uncertainty": to_plain_python_value(fid_result.get("F_g_err")),
+        }
+
+    if isinstance(fid_result, (float, int, np.floating)):
+        return {
+            "fidelity": float(fid_result),
+            "uncertainty": None,
+        }
+
+    return {
+        "fidelity": None,
+        "uncertainty": None,
+    }
+
+
+def append_fidelity_row(row: dict, out_path: Path = FIDELITY_OUT):
+    """Append one row to the fidelity CSV."""
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    clean_row = {col: row.get(col, None) for col in FIDELITY_COLUMNS}
+    df_new = pd.DataFrame([clean_row], columns=FIDELITY_COLUMNS)
+
+    if out_path.exists():
+        df_old = pd.read_csv(out_path)
+        df_old = df_old.reindex(columns=FIDELITY_COLUMNS)
+        df_all = pd.concat([df_old, df_new], ignore_index=True)
+    else:
+        df_all = df_new
+
+    df_all.to_csv(out_path, index=False)
 # Data analysis functions ----------------------------
 
 def measured_data(job_id: str) -> Dict[str, float]:
@@ -473,22 +565,40 @@ def main(polling_frequency: int = 10):
         # Process based on experiment type
         if params["Experiment"] in ("2QEcho", "2QCumulative"):
 
-            # Call raw_data_to_fidelity with q_i, q_j and numshots from CSV
-            raw_data_to_fidelity(
+            timestamp = clean_timestamp_from_row(job_row, raw_filepath)
+            experiment = params["Experiment"]
+            q1 = params["q1"]
+            q2 = params["q2"]
+        
+            fid_result = raw_data_to_fidelity(
                 raw_data_loaded,
-                i=params["q1"],
-                j=params["q2"],
+                i=q1,
+                j=q2,
                 numdata=3,
                 numshots=params["shots"],
-                num_echo = np.array([10,20]),
-                label=f"Qubits ({params['q1']},{params['q2']})",
+                num_echo=np.array([10, 20]),
+                label=f"Qubits ({q1},{q2})",
                 grouping="echo-major",
                 plot=True,
                 save_plot=True,
                 save_dir=raw_filepath.parent.parent / "_figures_from_data",
-                save_basename=f"Q{params['q1']}_{params['q2']}_fidelity",
+                save_basename=f"Q{q1}_{q2}_fidelity",
                 save_format="svg",
             )
+        
+            fid_summary = summarize_fidelity_result(fid_result)
+        
+            append_fidelity_row({
+                "timestamp": timestamp,
+                "experiment": experiment,
+                "job_id": job_id,
+                "q1": q1,
+                "q2": q2,
+                "qubit_pair": f"[{q1}, {q2}]",
+                "shots": params["shots"],
+                "raw_data_file": str(raw_filepath),
+                **fid_summary,
+            })
 
         elif params["Experiment"] == "Data":
             # --- 1. Load ideal circuit + mapping from jobs_submitted.csv ---
