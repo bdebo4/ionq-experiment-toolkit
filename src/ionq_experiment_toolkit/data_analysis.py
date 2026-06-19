@@ -605,53 +605,53 @@ def main(polling_frequency: int = 10):
                 **fid_summary,
             })
 
-        elif params["Experiment"] == "Data":
+        #elif params["Experiment"] == "Data":
             # --- 1. Load ideal circuit + mapping from jobs_submitted.csv ---
-            try:
-                qisk_circ, mapping = load_qisk_and_map_from_job_id(job_id)
-            except Exception as e:
-                print(f"[ERROR] Could not load circuit/mapping for job {job_id}: {e}")
-                continue
-
-            # --- 2. Get measured hardware probabilities from IonQ backend ---
-            try:
-                ion_probs = measured_data(job_id)
-            except Exception as e:
-                print(f"[ERROR] Could not retrieve measured data for job {job_id}: {e}")
-                continue
-
-            # --- 3. Remap 36-ion probabilities -> 10 logical qubits ---
-            try:
-                # Use bit_order='right_to_left' to match Qiskit's bitstring convention
-                measured_populations = remap_ion_probs_to_qubit_probs(
-                    ion_result=ion_probs,
-                    mapping=mapping,
-                    renormalize=True,
-                    bit_order="right_to_left",
-                )
-            except Exception as e:
-                print(f"[ERROR] Could not remap ion probabilities for job {job_id}: {e}")
-                continue
-
-            # --- 4. Compute ideal populations from the Qiskit circuit ---
-            try:
-                ideal_populations = calculate_ideal_populations(
-                    qisk_circ,
-                    bit_order="right_to_left",  # match keys with measured_populations
-                )
-            except Exception as e:
-                print(f"[ERROR] Could not compute ideal populations for job {job_id}: {e}")
-                continue
-
-            # --- 5. Classical (Bhattacharyya) fidelity between distributions ---
-            try:
-                fid = circuit_fidelity(measured_populations, ideal_populations)
-            except Exception as e:
-                print(f"[ERROR] Could not compute fidelity for job {job_id}: {e}")
-                continue
-
-            print(f"Job {job_id}, == Fidelity={fid:.6f} ==")
-            print('')
+            #try:
+            #    qisk_circ, mapping = load_qisk_and_map_from_job_id(job_id)
+            #except Exception as e:
+            #    print(f"[ERROR] Could not load circuit/mapping for job {job_id}: {e}")
+            #    continue
+#
+            ## --- 2. Get measured hardware probabilities from IonQ backend ---
+            #try:
+            #    ion_probs = measured_data(job_id)
+            #except Exception as e:
+            #    print(f"[ERROR] Could not retrieve measured data for job {job_id}: {e}")
+            #    continue
+#
+            ## --- 3. Remap 36-ion probabilities -> 10 logical qubits ---
+            #try:
+            #    # Use bit_order='right_to_left' to match Qiskit's bitstring convention
+            #    measured_populations = remap_ion_probs_to_qubit_probs(
+            #        ion_result=ion_probs,
+            #        mapping=mapping,
+            #        renormalize=True,
+            #        bit_order="right_to_left",
+            #    )
+            #except Exception as e:
+            #    print(f"[ERROR] Could not remap ion probabilities for job {job_id}: {e}")
+            #    continue
+#
+            ## --- 4. Compute ideal populations from the Qiskit circuit ---
+            #try:
+            #    ideal_populations = calculate_ideal_populations(
+            #        qisk_circ,
+            #        bit_order="right_to_left",  # match keys with measured_populations
+            #    )
+            #except Exception as e:
+            #    print(f"[ERROR] Could not compute ideal populations for job {job_id}: {e}")
+            #    continue
+#
+            ## --- 5. Classical (Bhattacharyya) fidelity between distributions ---
+            #try:
+            #    fid = circuit_fidelity(measured_populations, ideal_populations)
+            #except Exception as e:
+            #    print(f"[ERROR] Could not compute fidelity for job {job_id}: {e}")
+            #    continue
+#
+            #print(f"Job {job_id}, == Fidelity={fid:.6f} ==")
+            #print('')
 
 
         # Mark this job as plotted and persist to CSV
