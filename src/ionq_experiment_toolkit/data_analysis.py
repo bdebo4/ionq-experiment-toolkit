@@ -567,10 +567,15 @@ def main(polling_frequency: int = 10):
 
             timestamp = clean_timestamp_from_row(job_row, raw_filepath)
             experiment = params["Experiment"]
+            print(experiment)
+            
+            print(type(experiment))
+
+
             q1 = params["q1"]
             q2 = params["q2"]
         
-            fid_result = raw_data_to_fidelity(
+            fid_result = raw_data_to_fidelity(experiment,
                 raw_data_loaded,
                 i=q1,
                 j=q2,

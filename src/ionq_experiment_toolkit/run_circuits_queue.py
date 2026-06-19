@@ -354,59 +354,65 @@ def mark_queue_row_submitted(path: Path, row_index: int):
         writer.writeheader()
         writer.writerows(rows)
 def main():
-
-    idx,row = load_next_from_queue(QUE)
-
-    experiment, shots, qubit_pairs,Characteristic,debiasing_value = load_config_experiment_from_queue(row)
-    
-    debiasing_value = False
-    
-
-    print(f"Selected experiment: {experiment}")
-
-    if experiment == "Data":
-        print(f" → Characteristic = {Characteristic}")
-        
+    if len(sys.argv) >= 2:
+        times = int(sys.argv[1])
     else:
-        print(" → no extra parameters required")
-    # Command is valid, proceed with experiment
+        times = 1
+        
+    
+    for i in range(times):
+        idx,row = load_next_from_queue(QUE)
+
+        experiment, shots, qubit_pairs,Characteristic,debiasing_value = load_config_experiment_from_queue(row)
+
+        debiasing_value = False
+
+
+        print(f"Selected experiment: {experiment}")
+
+        if experiment == "Data":
+            print(f" → Characteristic = {Characteristic}")
+
+        else:
+            print(" → no extra parameters required")
+        # Command is valid, proceed with experiment
 
 
 
-    print(f"Executing experiment: {experiment}")
-    ensure_jobs_header(JOBS_SUBMITTED_LOG)
+        print(f"Executing experiment: {experiment}")
+        ensure_jobs_header(JOBS_SUBMITTED_LOG)
 
-     # Load configuration and run corresponding circuit
-    if experiment == '2QEcho':
-        
-       
-        
-        print(token)
-        print(backend_name)
-        print(type(shots))  
-        print(qubit_pairs[0])  
-         
-        print(Characteristic)
-        load_and_run_qpy_circuits(experiment,CIRCS_2Qecho,backend_name,noise_model,token,shots,qubit_pairs,Characteristic)
-        mark_queue_row_submitted(QUE, idx)
-    elif experiment == '2QCumulative':
-        
-        print(token)
-        print(backend_name)
-        print(shots) 
-        print(qubit_pairs) 
-        print(Characteristic) 
-        
-        load_and_run_qpy_circuits(experiment,CIRCS_2QCumulative,backend_name,noise_model,token,shots,qubit_pairs,Characteristic)
-        mark_queue_row_submitted(QUE, idx)
-        pass
-        
-    elif experiment == 'Data':
-        folder_path = CIRCS_Data_batch / f"Data_{Characteristic}"
-        load_and_run_qpy_circuits(experiment,folder_path,backend_name,noise_model,token,shots,qubit_pairs,Characteristic,debiasing_value)
-        mark_queue_row_submitted(QUE, idx)
-        # Do something for command 'c'
-        pass
+        # Load configuration and run corresponding circuit
+        if experiment == '2QEcho':
+
+
+
+            print(token)
+            print(backend_name)
+            print(type(shots))  
+            print(qubit_pairs[0])  
+
+            print(Characteristic)
+            load_and_run_qpy_circuits(experiment,CIRCS_2Qecho,backend_name,noise_model,token,shots,qubit_pairs,Characteristic)
+            mark_queue_row_submitted(QUE, idx)
+        elif experiment == '2QCumulative':
+
+            print(token)
+            print(backend_name)
+            print(shots) 
+            print(qubit_pairs) 
+            print(Characteristic) 
+
+            load_and_run_qpy_circuits(experiment,CIRCS_2QCumulative,backend_name,noise_model,token,shots,qubit_pairs,Characteristic)
+            mark_queue_row_submitted(QUE, idx)
+            pass
+
+        elif experiment == 'Data':
+            folder_path = CIRCS_Data_batch / f"Data_{Characteristic}"
+            load_and_run_qpy_circuits(experiment,folder_path,backend_name,noise_model,token,shots,qubit_pairs,Characteristic,debiasing_value)
+            mark_queue_row_submitted(QUE, idx)
+            # Do something for command 'c'
+            pass
 
 if __name__ == "__main__":
     main()

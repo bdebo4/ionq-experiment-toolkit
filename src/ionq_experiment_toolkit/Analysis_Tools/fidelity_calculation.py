@@ -16,7 +16,7 @@ from pathlib import Path
 from collections.abc import Mapping, Sequence
 
 
-def raw_data_to_fidelity(
+def raw_data_to_fidelity(experiment,
     raw_data,
     i,
     j,
@@ -91,7 +91,7 @@ def raw_data_to_fidelity(
 
 
     # -------- 2) Fit fidelity model + plot --------
-    results = analyze_two_qubit_fidelity(
+    results = analyze_two_qubit_fidelity(experiment,
         pop_with_zero,
         par_with_zero,
         pop_err_with_zero,
@@ -126,7 +126,7 @@ def raw_data_to_fidelity(
     return results
 # -----------------------------------------------------------------------
 
-def analyze_two_qubit_fidelity(
+def analyze_two_qubit_fidelity(experiment,
     population,
     parity,
     population_error,
@@ -264,9 +264,16 @@ def analyze_two_qubit_fidelity(
 
     title_prefix = f"{label}: " if label else ""
     # 1 - F_g per gate ≈ -slope
+    if experiment == "2QEcho":
+        exp = "Echo"
+    elif experiment == "2QCumulative":
+        exp = "Cumulative"
+    else:
+        exp = str(experiment)
+
     ax.set_title(
-        f"{title_prefix}1 - F$_g$ ≈ {-slope:.4f} ± {slope_err:.4f}",
-        fontsize=10,
+    exp + "-" + f"{title_prefix}1 - F$_g$ ≈ {-slope:.4f} ± {slope_err:.4f}",
+    fontsize=10,
     )
     ax.set_xlabel("Number of ZZ gates")
     ax.set_ylabel("Fidelity")
